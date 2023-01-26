@@ -1,0 +1,6 @@
+// This global.json file was created to force the dotnet program to use version 5.0.408
+{
+    "sdk": {
+      "version": "5.0.408"
+    }
+  }
