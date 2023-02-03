@@ -1,0 +1,1 @@
+**Note:** This exercise uses .NET 5, which is no longer supported by Microsoft. In order to build the application with .NET 5, I used a global.json file to force the app to use version 5.0.408. I found this solution on stackoverflow here: https://stackoverflow.com/questions/66058856/how-to-make-dotnet-core-select-a-lower-version.
