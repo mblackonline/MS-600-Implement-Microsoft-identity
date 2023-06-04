@@ -2,50 +2,76 @@
 // Licensed under the MIT license.
 
 using System.Collections.Generic;
-using System.Linq;
-using ProductCatalog.Models;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using ProductCatalogWeb.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Identity.Web.Resource;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
 
-namespace ProductCatalog.Controllers
+namespace ProductCatalogWeb.Controllers
 {
   [Authorize]
-  [ApiController]
-  [Route("api/[controller]")]
-  public class CategoriesController : ControllerBase
+  public class CategoriesController : Controller
   {
-    SampleData data;
+    private ITokenAcquisition tokenAcquisition;
+    string[] scopes = Constants.ProductCatalogAPI.SCOPES.ToArray();
+    string url = "https://localhost:5050/api/Categories";
 
-    public CategoriesController(SampleData data)
+    public CategoriesController(ITokenAcquisition tokenAcquisition)
     {
-      this.data = data;
+      this.tokenAcquisition = tokenAcquisition;
     }
 
-    public List<Category> GetAllCategories()
+    [AuthorizeForScopes(Scopes = new[] { Constants.ProductCatalogAPI.CategoryReadScope })]
+    public async Task<ActionResult> Index()
     {
-      HttpContext.VerifyUserHasAnyAcceptedScope(new string[] { "Category.Read" });
-      return data.Categories;
+      var client = new HttpClient();
+
+      var accessToken = await tokenAcquisition.GetAccessTokenForUserAsync(Constants.ProductCatalogAPI.SCOPES);
+      client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+      var json = await client.GetStringAsync(url);
+
+      var serializerOptions = new JsonSerializerOptions
+      {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+      };
+      var categories = JsonSerializer.Deserialize(json, typeof(List<Category>), serializerOptions) as List<Category>;
+      return View(categories);
     }
 
-    [HttpGet("{id}")]
-    public Category GetCategory(int id)
+    [AuthorizeForScopes(Scopes = new[] { Constants.ProductCatalogAPI.CategoryWriteScope })]
+    public ActionResult Create()
     {
-      HttpContext.VerifyUserHasAnyAcceptedScope(new string[] { "Category.Read" });
-      return data.Categories.FirstOrDefault(p => p.Id.Equals(id));
+      return View();
     }
 
     [HttpPost]
-    public ActionResult CreateCategory([FromBody] Category newCategory)
+    [ValidateAntiForgeryToken]
+    [AuthorizeForScopes(Scopes = new[] { Constants.ProductCatalogAPI.CategoryWriteScope })]
+    public async Task<ActionResult> Create([Bind("Name")] Category category)
     {
-      HttpContext.VerifyUserHasAnyAcceptedScope(new string[] { "Category.Write" });
-      if (string.IsNullOrEmpty(newCategory.Name))
+      if (ModelState.IsValid)
       {
-        return BadRequest("Product Name cannot be empty");
+        var newCat = new Category() { Name = category.Name };
+
+        var client = new HttpClient();
+
+        var accessToken = await tokenAcquisition.GetAccessTokenForUserAsync(Constants.ProductCatalogAPI.SCOPES);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var content = new StringContent(JsonSerializer.Serialize(newCat, typeof(Category)), Encoding.UTF8, "application/json");
+        await client.PostAsync(url, content);
+
+        return RedirectToAction("Index");
       }
-      newCategory.Id = (data.Categories.Max(c => c.Id) + 1);
-      data.Categories.Add(newCategory);
-      return CreatedAtAction(nameof(GetCategory), new { id = newCategory.Id }, newCategory);
+      return View(category);
     }
   }
 }
